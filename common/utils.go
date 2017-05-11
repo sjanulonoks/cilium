@@ -25,6 +25,10 @@ import (
 	"time"
 
 	l "github.com/op/go-logging"
+	logrus "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus/hooks/syslog"
+	"log/syslog"
+	"github.com/evalphobia/logrus_fluent"
 )
 
 // goArray2C transforms a byte slice into its hexadecimal string representation.
@@ -70,6 +74,45 @@ func Swab32(n uint32) uint32 {
 }
 
 // SetupLOG sets up logger with the correct parameters for the whole cilium architecture.
+func SetupLOG2(logLevel string) {
+
+	//Validate provided log level.
+	level, err := logrus.ParseLevel(logLevel)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	logrus.SetLevel(level)
+
+	// Setup log formatting.
+	fileFormat := new(logrus.TextFormatter)
+	switch os.Getenv("INITSYSTEM") {
+	case "SYSTEMD":
+		fileFormat.DisableTimestamp = true
+		fileFormat.FullTimestamp = true
+	default:
+		fileFormat.TimestampFormat = time.RFC3339
+	}
+	logrus.SetFormatter(fileFormat)
+
+	// Create syslog hook.
+	hook, err := logrus_syslog.NewSyslogHook("","", syslog.LOG_INFO, "")
+	if err != nil {
+		logrus.Fatal("error initiating syslog hook: %s", err)
+	}
+	logrus.AddHook(hook)
+
+	//Create fluentd hook.
+	fHook, err := logrus_fluent.New("localhost", 24224)
+	if err != nil {
+		logrus.Fatal("error initiating fluentd hook: %s", err)
+	}
+
+	// set custom fire level
+	fHook.SetLevels([]logrus.Level{logrus.PanicLevel, logrus.ErrorLevel, logrus.DebugLevel, logrus.WarnLevel, logrus.InfoLevel,})
+	logrus.AddHook(fHook)
+}
+
+// SetupLOG sets up logger with the correct parameters for the whole cilium architecture.
 func SetupLOG(logger *l.Logger, logLevel string) {
 
 	var fileFormat l.Formatter
@@ -94,6 +137,10 @@ func SetupLOG(logger *l.Logger, logLevel string) {
 	backendLeveled := l.SetBackend(oBF)
 	backendLeveled.SetLevel(level, "")
 	logger.SetBackend(backendLeveled)
+}
+
+func SetupLogging(loggers []string, logOpts map[string]string) {
+
 }
 
 // GetGroupIDByName returns the group ID for the given grpName.
